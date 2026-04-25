@@ -1,0 +1,886 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "a223edd9-d67d-4ab0-a454-e1d7466ee4c6",
+   "metadata": {},
+   "source": [
+    "# Data-Driven Demand Planning and Adaptive EOQ Model for Inventory Optimization"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "a9bbac9c-728d-4328-8de4-78b3f0ac943a",
+   "metadata": {},
+   "source": [
+    "## 1. Introduction\n",
+    "\n",
+    "Inventory management is a key business problem in retail and supply chain operations. \n",
+    "The classical Economic Order Quantity (EOQ) model assumes that demand is constant and known in advance. \n",
+    "In real business environments, demand changes over time and may be affected by seasonality, holidays, and customer behavior.\n",
+    "\n",
+    "The goal of this project is to extend the classical EOQ model by using data-driven demand forecasting. \n",
+    "Historical retail sales data will be analyzed and used to estimate future demand. \n",
+    "The forecasted demand will then be used as input for an adaptive EOQ model."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "33b373c1-7915-4493-91f2-43bb889f259c",
+   "metadata": {},
+   "source": [
+    "## 2. Project Objectives\n",
+    "\n",
+    "The main objectives of this project are:\n",
+    "\n",
+    "- Analyze historical retail sales data\n",
+    "- Combine sales data with external holiday information\n",
+    "- Build a demand forecasting model\n",
+    "- Compare a baseline forecast with a machine learning model\n",
+    "- Use forecasted demand in an adaptive EOQ model\n",
+    "- Evaluate how data-driven demand planning can improve inventory decisions"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "id": "7ce4684c-371c-4ef6-afae-5f387512e517",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "from sklearn.ensemble import RandomForestRegressor\n",
+    "from sklearn.metrics import mean_absolute_error, mean_squared_error\n",
+    "\n",
+    "import warnings\n",
+    "warnings.filterwarnings(\"ignore\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "35c084c7-a5e7-425d-8ced-530d53a27f3d",
+   "metadata": {},
+   "source": [
+    "## 3. Data Availability Note\n",
+    "\n",
+    "The main sales dataset is the Online Retail Dataset. \n",
+    "Due to GitHub file size limitations, the full dataset is not included in the repository. \n",
+    "It is used locally for analysis.\n",
+    "\n",
+    "The second dataset is a UK holidays dataset, which is included in the repository and used as an external factor for demand forecasting."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "id": "6d494882-caaa-411e-8171-3b311a8b68d0",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>InvoiceNo</th>\n",
+       "      <th>StockCode</th>\n",
+       "      <th>Description</th>\n",
+       "      <th>Quantity</th>\n",
+       "      <th>InvoiceDate</th>\n",
+       "      <th>UnitPrice</th>\n",
+       "      <th>CustomerID</th>\n",
+       "      <th>Country</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>85123A</td>\n",
+       "      <td>WHITE HANGING HEART T-LIGHT HOLDER</td>\n",
+       "      <td>6</td>\n",
+       "      <td>12/1/2010 8:26</td>\n",
+       "      <td>2.55</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>71053</td>\n",
+       "      <td>WHITE METAL LANTERN</td>\n",
+       "      <td>6</td>\n",
+       "      <td>12/1/2010 8:26</td>\n",
+       "      <td>3.39</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>84406B</td>\n",
+       "      <td>CREAM CUPID HEARTS COAT HANGER</td>\n",
+       "      <td>8</td>\n",
+       "      <td>12/1/2010 8:26</td>\n",
+       "      <td>2.75</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>84029G</td>\n",
+       "      <td>KNITTED UNION FLAG HOT WATER BOTTLE</td>\n",
+       "      <td>6</td>\n",
+       "      <td>12/1/2010 8:26</td>\n",
+       "      <td>3.39</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>84029E</td>\n",
+       "      <td>RED WOOLLY HOTTIE WHITE HEART.</td>\n",
+       "      <td>6</td>\n",
+       "      <td>12/1/2010 8:26</td>\n",
+       "      <td>3.39</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "  InvoiceNo StockCode                          Description  Quantity  \\\n",
+       "0    536365    85123A   WHITE HANGING HEART T-LIGHT HOLDER         6   \n",
+       "1    536365     71053                  WHITE METAL LANTERN         6   \n",
+       "2    536365    84406B       CREAM CUPID HEARTS COAT HANGER         8   \n",
+       "3    536365    84029G  KNITTED UNION FLAG HOT WATER BOTTLE         6   \n",
+       "4    536365    84029E       RED WOOLLY HOTTIE WHITE HEART.         6   \n",
+       "\n",
+       "      InvoiceDate  UnitPrice  CustomerID         Country  \n",
+       "0  12/1/2010 8:26       2.55     17850.0  United Kingdom  \n",
+       "1  12/1/2010 8:26       3.39     17850.0  United Kingdom  \n",
+       "2  12/1/2010 8:26       2.75     17850.0  United Kingdom  \n",
+       "3  12/1/2010 8:26       3.39     17850.0  United Kingdom  \n",
+       "4  12/1/2010 8:26       3.39     17850.0  United Kingdom  "
+      ]
+     },
+     "execution_count": 33,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sales_path = \"../data/raw/online_retail.csv\"\n",
+    "holidays_path = \"../data/raw/UK_holiday.csv\"\n",
+    "\n",
+    "sales = pd.read_csv(sales_path, encoding=\"ISO-8859-1\")\n",
+    "holidays = pd.read_csv(holidays_path)\n",
+    "\n",
+    "sales.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "id": "2dea201b-4358-4365-ad46-f14c531762e1",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "<class 'pandas.core.frame.DataFrame'>\n",
+      "RangeIndex: 541909 entries, 0 to 541908\n",
+      "Data columns (total 8 columns):\n",
+      " #   Column       Non-Null Count   Dtype  \n",
+      "---  ------       --------------   -----  \n",
+      " 0   InvoiceNo    541909 non-null  object \n",
+      " 1   StockCode    541909 non-null  object \n",
+      " 2   Description  540455 non-null  object \n",
+      " 3   Quantity     541909 non-null  int64  \n",
+      " 4   InvoiceDate  541909 non-null  object \n",
+      " 5   UnitPrice    541909 non-null  float64\n",
+      " 6   CustomerID   406829 non-null  float64\n",
+      " 7   Country      541909 non-null  object \n",
+      "dtypes: float64(2), int64(1), object(5)\n",
+      "memory usage: 33.1+ MB\n"
+     ]
+    }
+   ],
+   "source": [
+    "sales.info()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "id": "b5105b8b-9bb7-49ee-87ce-8c77467fd765",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "InvoiceNo           0\n",
+       "StockCode           0\n",
+       "Description      1454\n",
+       "Quantity            0\n",
+       "InvoiceDate         0\n",
+       "UnitPrice           0\n",
+       "CustomerID     135080\n",
+       "Country             0\n",
+       "dtype: int64"
+      ]
+     },
+     "execution_count": 35,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sales.isna().sum()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "id": "44112c29-f5de-4540-b3ad-4fd6aa3ab3d7",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array(['United Kingdom', 'France', 'Australia', 'Netherlands', 'Germany',\n",
+       "       'Norway', 'EIRE', 'Switzerland', 'Spain', 'Poland', 'Portugal',\n",
+       "       'Italy', 'Belgium', 'Lithuania', 'Japan', 'Iceland',\n",
+       "       'Channel Islands', 'Denmark', 'Cyprus', 'Sweden', 'Austria',\n",
+       "       'Israel', 'Finland', 'Bahrain', 'Greece', 'Hong Kong', 'Singapore',\n",
+       "       'Lebanon', 'United Arab Emirates', 'Saudi Arabia',\n",
+       "       'Czech Republic', 'Canada', 'Unspecified', 'Brazil', 'USA',\n",
+       "       'European Community', 'Malta', 'RSA'], dtype=object)"
+      ]
+     },
+     "execution_count": 36,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sales[\"Country\"].unique()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "id": "a7e10268-aea1-43b8-bbaf-36d8e57f4fc3",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "('1/10/2011 10:04', '9/9/2011 9:52')"
+      ]
+     },
+     "execution_count": 37,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sales[\"InvoiceDate\"].min(), sales[\"InvoiceDate\"].max()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "id": "c7898469-1e9d-4bb5-a408-e0a53e93f7c9",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>title</th>\n",
+       "      <th>date</th>\n",
+       "      <th>notes</th>\n",
+       "      <th>bunting</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>New Year’s Day</td>\n",
+       "      <td>2018-01-01</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>True</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>Good Friday</td>\n",
+       "      <td>2018-03-30</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>False</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>Easter Monday</td>\n",
+       "      <td>2018-04-02</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>True</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>Early May bank holiday</td>\n",
+       "      <td>2018-05-07</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>True</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>Spring bank holiday</td>\n",
+       "      <td>2018-05-28</td>\n",
+       "      <td>NaN</td>\n",
+       "      <td>True</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "                    title        date notes  bunting\n",
+       "0          New Year’s Day  2018-01-01   NaN     True\n",
+       "1             Good Friday  2018-03-30   NaN    False\n",
+       "2           Easter Monday  2018-04-02   NaN     True\n",
+       "3  Early May bank holiday  2018-05-07   NaN     True\n",
+       "4     Spring bank holiday  2018-05-28   NaN     True"
+      ]
+     },
+     "execution_count": 38,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "holidays.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 39,
+   "id": "fb682f34-fa91-45c8-a20f-bce9ad2e187f",
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "<class 'pandas.core.frame.DataFrame'>\n",
+      "RangeIndex: 67 entries, 0 to 66\n",
+      "Data columns (total 4 columns):\n",
+      " #   Column   Non-Null Count  Dtype \n",
+      "---  ------   --------------  ----- \n",
+      " 0   title    67 non-null     object\n",
+      " 1   date     67 non-null     object\n",
+      " 2   notes    6 non-null      object\n",
+      " 3   bunting  67 non-null     bool  \n",
+      "dtypes: bool(1), object(3)\n",
+      "memory usage: 1.8+ KB\n"
+     ]
+    }
+   ],
+   "source": [
+    "holidays.info()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "id": "c76e503f-0d21-4907-b0f7-133ce9c0b45e",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "('2018-01-01', '2025-12-26')"
+      ]
+     },
+     "execution_count": 40,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "holidays[\"date\"].min(), holidays[\"date\"].max()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "2e8a9ad5-d789-4d60-9aac-9d52e94dc57c",
+   "metadata": {},
+   "source": [
+    "## 4. Data Cleaning\n",
+    "\n",
+    "The sales data is cleaned by removing missing values, negative quantities, and non-positive prices. \n",
+    "Negative quantities usually represent returns or cancellations, while this project focuses on demand forecasting."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "id": "e3bd2ced-961c-4216-9ddc-22c6b864b2f0",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>InvoiceNo</th>\n",
+       "      <th>StockCode</th>\n",
+       "      <th>Description</th>\n",
+       "      <th>Quantity</th>\n",
+       "      <th>InvoiceDate</th>\n",
+       "      <th>UnitPrice</th>\n",
+       "      <th>CustomerID</th>\n",
+       "      <th>Country</th>\n",
+       "      <th>date</th>\n",
+       "      <th>revenue</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>85123A</td>\n",
+       "      <td>WHITE HANGING HEART T-LIGHT HOLDER</td>\n",
+       "      <td>6</td>\n",
+       "      <td>2024-12-01 08:26:00</td>\n",
+       "      <td>2.55</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "      <td>2024-12-01</td>\n",
+       "      <td>15.30</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>71053</td>\n",
+       "      <td>WHITE METAL LANTERN</td>\n",
+       "      <td>6</td>\n",
+       "      <td>2024-12-01 08:26:00</td>\n",
+       "      <td>3.39</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "      <td>2024-12-01</td>\n",
+       "      <td>20.34</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>84406B</td>\n",
+       "      <td>CREAM CUPID HEARTS COAT HANGER</td>\n",
+       "      <td>8</td>\n",
+       "      <td>2024-12-01 08:26:00</td>\n",
+       "      <td>2.75</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "      <td>2024-12-01</td>\n",
+       "      <td>22.00</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>84029G</td>\n",
+       "      <td>KNITTED UNION FLAG HOT WATER BOTTLE</td>\n",
+       "      <td>6</td>\n",
+       "      <td>2024-12-01 08:26:00</td>\n",
+       "      <td>3.39</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "      <td>2024-12-01</td>\n",
+       "      <td>20.34</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>536365</td>\n",
+       "      <td>84029E</td>\n",
+       "      <td>RED WOOLLY HOTTIE WHITE HEART.</td>\n",
+       "      <td>6</td>\n",
+       "      <td>2024-12-01 08:26:00</td>\n",
+       "      <td>3.39</td>\n",
+       "      <td>17850.0</td>\n",
+       "      <td>United Kingdom</td>\n",
+       "      <td>2024-12-01</td>\n",
+       "      <td>20.34</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "  InvoiceNo StockCode                          Description  Quantity  \\\n",
+       "0    536365    85123A   WHITE HANGING HEART T-LIGHT HOLDER         6   \n",
+       "1    536365     71053                  WHITE METAL LANTERN         6   \n",
+       "2    536365    84406B       CREAM CUPID HEARTS COAT HANGER         8   \n",
+       "3    536365    84029G  KNITTED UNION FLAG HOT WATER BOTTLE         6   \n",
+       "4    536365    84029E       RED WOOLLY HOTTIE WHITE HEART.         6   \n",
+       "\n",
+       "          InvoiceDate  UnitPrice  CustomerID         Country        date  \\\n",
+       "0 2024-12-01 08:26:00       2.55     17850.0  United Kingdom  2024-12-01   \n",
+       "1 2024-12-01 08:26:00       3.39     17850.0  United Kingdom  2024-12-01   \n",
+       "2 2024-12-01 08:26:00       2.75     17850.0  United Kingdom  2024-12-01   \n",
+       "3 2024-12-01 08:26:00       3.39     17850.0  United Kingdom  2024-12-01   \n",
+       "4 2024-12-01 08:26:00       3.39     17850.0  United Kingdom  2024-12-01   \n",
+       "\n",
+       "   revenue  \n",
+       "0    15.30  \n",
+       "1    20.34  \n",
+       "2    22.00  \n",
+       "3    20.34  \n",
+       "4    20.34  "
+      ]
+     },
+     "execution_count": 41,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sales_clean = sales.copy()\n",
+    "\n",
+    "sales_clean = sales_clean.dropna(subset=[\"InvoiceDate\", \"Quantity\", \"UnitPrice\"])\n",
+    "sales_clean[\"InvoiceDate\"] = pd.to_datetime(sales_clean[\"InvoiceDate\"])\n",
+    "\n",
+    "# Shift historical sales dates from 2010-2011 to 2024-2025\n",
+    "sales_clean[\"InvoiceDate\"] = sales_clean[\"InvoiceDate\"] + pd.DateOffset(years=14)\n",
+    "\n",
+    "sales_clean = sales_clean[sales_clean[\"Quantity\"] > 0]\n",
+    "sales_clean = sales_clean[sales_clean[\"UnitPrice\"] > 0]\n",
+    "\n",
+    "sales_clean[\"date\"] = sales_clean[\"InvoiceDate\"].dt.date\n",
+    "sales_clean[\"revenue\"] = sales_clean[\"Quantity\"] * sales_clean[\"UnitPrice\"]\n",
+    "\n",
+    "sales_clean.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "id": "416750d9-d705-49d8-88c4-34ff62c2abd7",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "(Timestamp('2024-12-01 08:26:00'), Timestamp('2025-12-09 12:50:00'))"
+      ]
+     },
+     "execution_count": 42,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sales_clean[\"InvoiceDate\"].min(), sales_clean[\"InvoiceDate\"].max()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 43,
+   "id": "715d52cf-7101-4e3e-a91b-98f13806d7ab",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>date</th>\n",
+       "      <th>quantity_sold</th>\n",
+       "      <th>revenue</th>\n",
+       "      <th>unique_products</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>2024-12-01</td>\n",
+       "      <td>26919</td>\n",
+       "      <td>58960.79</td>\n",
+       "      <td>1340</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>2024-12-02</td>\n",
+       "      <td>31329</td>\n",
+       "      <td>47748.38</td>\n",
+       "      <td>923</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2024-12-03</td>\n",
+       "      <td>16199</td>\n",
+       "      <td>46943.71</td>\n",
+       "      <td>1133</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>2024-12-05</td>\n",
+       "      <td>16450</td>\n",
+       "      <td>31774.95</td>\n",
+       "      <td>1142</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>2024-12-06</td>\n",
+       "      <td>21795</td>\n",
+       "      <td>54830.46</td>\n",
+       "      <td>1471</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "        date  quantity_sold   revenue  unique_products\n",
+       "0 2024-12-01          26919  58960.79             1340\n",
+       "1 2024-12-02          31329  47748.38              923\n",
+       "2 2024-12-03          16199  46943.71             1133\n",
+       "3 2024-12-05          16450  31774.95             1142\n",
+       "4 2024-12-06          21795  54830.46             1471"
+      ]
+     },
+     "execution_count": 43,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "daily_demand = (\n",
+    "    sales_clean\n",
+    "    .groupby(\"date\")\n",
+    "    .agg(\n",
+    "        quantity_sold=(\"Quantity\", \"sum\"),\n",
+    "        revenue=(\"revenue\", \"sum\"),\n",
+    "        unique_products=(\"StockCode\", \"nunique\")\n",
+    "    )\n",
+    "    .reset_index()\n",
+    ")\n",
+    "\n",
+    "daily_demand[\"date\"] = pd.to_datetime(daily_demand[\"date\"])\n",
+    "daily_demand.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 44,
+   "id": "1d943fe0-e14e-4309-b3c3-a93e549410b3",
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>date</th>\n",
+       "      <th>is_holiday</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>2018-01-01</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>2018-03-30</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>2018-04-02</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>2018-05-07</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>2018-05-28</td>\n",
+       "      <td>1</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "        date  is_holiday\n",
+       "0 2018-01-01           1\n",
+       "1 2018-03-30           1\n",
+       "2 2018-04-02           1\n",
+       "3 2018-05-07           1\n",
+       "4 2018-05-28           1"
+      ]
+     },
+     "execution_count": 44,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "holidays_clean = holidays.copy()\n",
+    "\n",
+    "holidays_clean[\"date\"] = pd.to_datetime(holidays_clean[\"date\"])\n",
+    "holidays_clean[\"is_holiday\"] = 1\n",
+    "\n",
+    "holidays_clean = holidays_clean[[\"date\", \"is_holiday\"]]\n",
+    "\n",
+    "holidays_clean.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "id": "0671f4fc-79a4-49f2-bfbe-c3adf5ce1ae2",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "daily_demand = daily_demand.merge(\n",
+    "    holidays_clean,\n",
+    "    on=\"date\",\n",
+    "    how=\"left\"\n",
+    ")\n",
+    "\n",
+    "daily_demand[\"is_holiday\"] = daily_demand[\"is_holiday\"].fillna(0).astype(int)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 46,
+   "id": "f07db694-a107-4802-865a-76cb3bbe082f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "daily_demand[\"is_holiday\"] = daily_demand[\"is_holiday\"].fillna(0).astype(int)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "aee7b4ae-7557-4e05-8ba3-e6cf84cf56d9",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python [conda env:base] *",
+   "language": "python",
+   "name": "conda-base-py"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.13.9"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
