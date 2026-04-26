@@ -13,3 +13,12 @@ https://www.kaggle.com/datasets/carrie1/ecommerce-data?resource=download
 
 2. Holidays Dataset  
 Included in the repository.
+
+## How to run
+
+1. Clone the repository.
+2. Install dependencies:
+   pip install -r requirements.txt
+3. Download the Online Retail dataset from Kaggle.
+4. Save it as data/raw/online_retail.csv.
+5. Run the notebook from the notebooks folder.
